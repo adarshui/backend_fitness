@@ -8,8 +8,9 @@ class UserProfile(models.Model):
     date_of_birth = models.DateField(null=True, blank=True)
     weight = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     height = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    # Add other relevant fields like gender, fitness goals, etc.
-
+    total_exercise_time = models.IntegerField(default=0)  # in seconds
+    total_workouts = models.IntegerField(default=0)
+    
     def __str__(self):
         return self.user.username
 
