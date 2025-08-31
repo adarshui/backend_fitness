@@ -11,6 +11,8 @@ class UserProfile(models.Model):
     weight = models.FloatField(null=True, blank=True) # in kg
     level = models.CharField(max_length=20, blank=True, default='beginner')
     date_of_birth = models.DateField(null=True, blank=True)
+    total_exercise_time = models.IntegerField(default=0) # in seconds
+    total_workouts = models.IntegerField(default=0)
 
     def __str__(self):
         return self.user.username
@@ -20,7 +22,3 @@ class UserProfile(models.Model):
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
-
-@receiver(post_save, sender=User)
-def save_user_profile(sender, instance, **kwargs):
-    instance.userprofile.save()
