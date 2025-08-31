@@ -1,43 +1,26 @@
-# In your 'fitness/models.py' file
-
-from django.contrib.auth.models import User
 from django.db import models
+from django.contrib.auth.models import User
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='userprofile')
+    age = models.IntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=10, blank=True, default='')
+    height = models.FloatField(null=True, blank=True) # in cm
+    weight = models.FloatField(null=True, blank=True) # in kg
+    level = models.CharField(max_length=20, blank=True, default='beginner')
     date_of_birth = models.DateField(null=True, blank=True)
-    weight = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    height = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    total_exercise_time = models.IntegerField(default=0)  # in seconds
-    total_workouts = models.IntegerField(default=0)
-    
+
     def __str__(self):
         return self.user.username
 
-class Exercise(models.Model):
-    name = models.CharField(max_length=255, unique=True)
-    description = models.TextField(blank=True)
-    # Add fields for exercise type (e.g., cardio, strength), targeted muscle groups, etc.
+# These functions (signals) ensure a UserProfile is created when a new User signs up.
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
 
-    def __str__(self):
-        return self.name
-
-class Workout(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    date = models.DateField()
-    duration_minutes = models.PositiveIntegerField(null=True, blank=True)
-    notes = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"{self.user.username}'s workout on {self.date}"
-
-class WorkoutExercise(models.Model):
-    workout = models.ForeignKey(Workout, on_delete=models.CASCADE)
-    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)
-    sets = models.PositiveIntegerField(null=True, blank=True)
-    reps = models.PositiveIntegerField(null=True, blank=True)
-    weight = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-    # Add fields for distance, duration (for cardio), etc. depending on exercise type
-
-    def __str__(self):
-        return f"{self.exercise.name} in {self.workout}"
+@receiver(post_save, sender=User)
+def save_user_profile(sender, instance, **kwargs):
+    instance.userprofile.save()
