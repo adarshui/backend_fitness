@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from .models import UserProfile
+from .models import UserProfile, DailyUserStats
+from datetime import timedelta
+from django.utils import timezone
 
 @api_view(['POST'])
 def register_user(request):
@@ -21,18 +23,67 @@ def register_user(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_data(request):
+    # Get summary stats from UserProfile
+    profile, created = UserProfile.objects.get_or_create(user=request.user)
+
+    # Get daily stats for the last 30 days
+    today = timezone.now().date()
+    start_date = today - timedelta(days=29)
+    
+    daily_stats_qs = DailyUserStats.objects.filter(
+        user=request.user,
+        date__gte=start_date
+    ).order_by('date')
+
+    # Create a dictionary for quick lookups
+    stats_dict = {s.date.strftime('%Y-%m-%d'): s for s in daily_stats_qs}
+
+    # Prepare data for charts, filling in missing days
+    chart_data = []
+    
+    # Find the most recent weight entry to back-fill from
+    most_recent_stat_with_weight = DailyUserStats.objects.filter(
+        user=request.user, 
+        date__lt=start_date, 
+        weight__isnull=False
+    ).order_by('-date').first()
+    
+    last_known_weight = profile.weight
+    if most_recent_stat_with_weight:
+        last_known_weight = most_recent_stat_with_weight.weight
+
+    for i in range(30):
+        current_date = start_date + timedelta(days=i)
+        date_str = current_date.strftime('%Y-%m-%d')
+        
+        stat = stats_dict.get(date_str)
+        
+        calories = stat.calories_burned if stat and stat.calories_burned is not None else 0
+        
+        # Use the stat's weight if available, otherwise carry over the last known weight
+        if stat and stat.weight is not None:
+            weight = stat.weight
+            last_known_weight = weight
+        else:
+            weight = last_known_weight
+
+        chart_data.append({
+            'date': current_date.strftime('%b %d'), # Format for display, e.g., "Sep 06"
+            'calories_burned': calories,
+            'weight': weight if weight is not None else None # can be null if never entered
+        })
+
+    # Calculate total calories burned in the last 30 days
+    total_calories_30_days = sum(s.calories_burned for s in daily_stats_qs if s.calories_burned)
+
     return Response({
         'message': f'Welcome {request.user.username}!',
-        'stats': {
-            'total_workouts': 12,
-            'calories_burned': 2450,
-            'active_days': 8
+        'summary_stats': {
+            'total_workouts': profile.total_workouts,
+            'total_calories_burned_30_days': total_calories_30_days,
+            'current_weight': profile.weight,
         },
-        'recent_activities': [
-            {'name': 'Morning Run', 'date': '2024-01-15', 'calories': 300},
-            {'name': 'Weight Training', 'date': '2024-01-14', 'calories': 250},
-            {'name': 'Yoga Session', 'date': '2024-01-13', 'calories': 150}
-        ]
+        'chart_data': chart_data
     })
 
 @api_view(['GET'])
@@ -65,6 +116,42 @@ def track_workout(request):
         'total_workouts': profile.total_workouts,
         'message': 'Workout tracked successfully'
     })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def complete_workout(request):
+    """
+    Updates daily stats for a user after completing a workout.
+    Accepts 'calories_burned'.
+    """
+    calories = request.data.get('calories_burned')
+
+    if calories is None:
+        return Response({'error': 'calories_burned is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        calories = float(calories)
+        if calories < 0:
+            raise ValueError()
+    except (ValueError, TypeError):
+        return Response({'error': 'calories_burned must be a non-negative number'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get or create a daily stats record for today
+    today = timezone.now().date()
+    daily_stats, created = DailyUserStats.objects.get_or_create(
+        user=request.user,
+        date=today
+    )
+
+    # Update stats
+    daily_stats.calories_burned += calories
+    daily_stats.save()
+
+    return Response({
+        'message': f'Great job! {calories:.0f} calories added to your daily total.',
+        'date': daily_stats.date,
+        'total_calories_today': daily_stats.calories_burned
+    }, status=status.HTTP_200_OK)
 
 # get user profile
 @api_view(['GET'])
@@ -236,7 +323,17 @@ def save_user_profile(request):
     # 3) Other fields: weight, height, gender
     # Preserve existing values if not provided
     if 'weight' in request.data:
-        profile.weight = request.data.get('weight', profile.weight)
+        new_weight = request.data.get('weight')
+        if new_weight is not None:
+            profile.weight = new_weight
+            # Also update today's daily stats with the new weight
+            today = date.today()
+            daily_stats, created = DailyUserStats.objects.get_or_create(user=request.user, date=today)
+            try:
+                daily_stats.weight = float(profile.weight)
+                daily_stats.save()
+            except (ValueError, TypeError):
+                pass # Ignore if weight is not a valid float
     if 'height' in request.data:
         profile.height = request.data.get('height', profile.height)
     if 'gender' in request.data:

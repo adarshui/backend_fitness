@@ -9,6 +9,7 @@ urlpatterns = [
     path('api/dashboard/', views.dashboard_data, name='dashboard_data'),
     path('api/profile/', views.user_profile, name='user_profile'),
     path('api/track-workout/', views.track_workout, name='track_workout'),
+    path('api/complete-workout/', views.complete_workout, name='complete_workout'),
     # Note: The '/api/profile/' path above seems redundant now. You may want to remove it.
     path('api/get_user_profile/', views.get_user_profile, name='get_user_profile'),
     path('api/save_user_profile/', views.save_user_profile, name='save_user_profile'),
