@@ -14,5 +14,6 @@ urlpatterns = [
     path('api/get_user_profile/', views.get_user_profile, name='get_user_profile'),
     path('api/save_user_profile/', views.save_user_profile, name='save_user_profile'),
     path('api/videos/', views.videos, name='videos'),
-    path('videos/', views.videos, name='videos_no_prefix')
+    path('videos/', views.videos, name='videos_no_prefix'),
+    path('api/log_activity/', views.log_activity, name='log_activity'),
 ]

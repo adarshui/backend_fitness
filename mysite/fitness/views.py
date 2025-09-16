@@ -13,12 +13,21 @@ def register_user(request):
     username = request.data.get('username')
     email = request.data.get('email')
     password = request.data.get('password')
+    gender = request.data.get('gender')
+    weight = request.data.get('weight')
     
     if User.objects.filter(username=username).exists():
         return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
     
+    if email and User.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'An account with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+    
     user = User.objects.create_user(username=username, email=email, password=password)
-    return Response({'message': 'User created successfully'}, status=status.HTTP_201_CREATED)
+
+    # Create UserProfile with optional gender and weight
+    UserProfile.objects.create(user=user, gender=gender or None, weight=weight or None)
+
+    return Response({'message': 'User created successfully. Please log in.'}, status=status.HTTP_201_CREATED)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -74,17 +83,64 @@ def dashboard_data(request):
         })
 
     # Calculate total calories burned in the last 30 days
-    total_calories_30_days = sum(s.calories_burned for s in daily_stats_qs if s.calories_burned)
+    from django.db.models import Sum
+    total_calories_30_days = daily_stats_qs.aggregate(total_calories=Sum('calories_burned'))['total_calories'] or 0
+
+    # Get today's stats from the data we already fetched
+    today_stat = stats_dict.get(today.strftime('%Y-%m-%d'))
+    calories_today = 0
+    seconds_today = 0
+    minutes_today = 0
+    if today_stat:
+        calories_today = today_stat.calories_burned or 0
+        # Assumes `time_spent_today` is stored in seconds in the database
+        seconds_today = (getattr(today_stat, 'time_spent_today', 0) or 0)
+        minutes_today = seconds_today // 60
 
     return Response({
         'message': f'Welcome {request.user.username}!',
         'summary_stats': {
             'total_workouts': profile.total_workouts,
-            'total_calories_burned_30_days': total_calories_30_days,
+            'total_calories': total_calories_30_days,
+            'total_minutes': minutes_today,
+            'time_spent_seconds': seconds_today,
             'current_weight': profile.weight,
+            'day_streak': 0, # Placeholder for now
+            'calories_today': calories_today,
         },
         'chart_data': chart_data
     })
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def log_activity(request):
+    """
+    Logs user activity by incrementing time spent.
+    Expects 'seconds' in the request data.
+    """
+    seconds = request.data.get('seconds', 0)
+    
+    try:
+        seconds = int(seconds)
+        if seconds <= 0:
+            return Response({'error': 'Invalid seconds value'}, status=status.HTTP_400_BAD_REQUEST)
+    except (ValueError, TypeError):
+        return Response({'error': 'Invalid seconds value'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get or create a daily stats record for today
+    today = timezone.now().date()
+    daily_stats, created = DailyUserStats.objects.get_or_create(
+        user=request.user,
+        date=today
+    )
+    
+    # Use an F() expression for a safe, atomic update directly in the database.
+    # This avoids race conditions and correctly handles cases where the field might be null.
+    from django.db.models import F
+    daily_stats.time_spent_today = F('time_spent_today') + seconds
+    daily_stats.save(update_fields=['time_spent_today'])
+    
+    return Response({'message': 'Activity logged'}, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -144,7 +200,7 @@ def complete_workout(request):
     )
 
     # Update stats
-    daily_stats.calories_burned += calories
+    daily_stats.calories_burned = (daily_stats.calories_burned or 0) + calories
     daily_stats.save()
 
     return Response({
