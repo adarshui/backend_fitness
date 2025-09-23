@@ -8,6 +8,6 @@ class UserProfileAdmin(admin.ModelAdmin):
     
 @admin.register(DailyUserStats)
 class DailyUserStatsAdmin(admin.ModelAdmin):
-    list_display = ['user', 'date', 'calories_burned', 'weight', 'time_spent_today']
+    list_display = ['user', 'date', 'calories_burned', 'workouts_today', 'weight', 'time_spent_today']
     list_filter = ['date']
     search_fields = ['user__username']

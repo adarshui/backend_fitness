@@ -90,11 +90,13 @@ def dashboard_data(request):
     today_stat = stats_dict.get(today.strftime('%Y-%m-%d'))
     calories_today = 0
     seconds_today = 0
+    workouts_today = 0
     minutes_today = 0
     if today_stat:
         calories_today = today_stat.calories_burned or 0
         # Assumes `time_spent_today` is stored in seconds in the database
         seconds_today = (getattr(today_stat, 'time_spent_today', 0) or 0)
+        workouts_today = getattr(today_stat, 'workouts_today', 0) or 0
         minutes_today = seconds_today // 60
 
     return Response({
@@ -107,6 +109,7 @@ def dashboard_data(request):
             'current_weight': profile.weight,
             'day_streak': 0, # Placeholder for now
             'calories_today': calories_today,
+            'workouts_today': workouts_today,
         },
         'chart_data': chart_data
     })
@@ -199,14 +202,23 @@ def complete_workout(request):
         date=today
     )
 
-    # Update stats
-    daily_stats.calories_burned = (daily_stats.calories_burned or 0) + calories
-    daily_stats.save()
+    # Atomically update stats for today
+    from django.db.models import F
+    DailyUserStats.objects.filter(pk=daily_stats.pk).update(
+        calories_burned=F('calories_burned') + calories,
+        workouts_today=F('workouts_today') + 1
+    )
+    # Also increment the total workout count on the user's profile
+    from django.db.models import F
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    profile.total_workouts = F('total_workouts') + 1
+    profile.save(update_fields=['total_workouts'])
 
     return Response({
         'message': f'Great job! {calories:.0f} calories added to your daily total.',
         'date': daily_stats.date,
-        'total_calories_today': daily_stats.calories_burned
+        # Return the new total, since the daily_stats object is stale after .update()
+        'total_calories_today': (daily_stats.calories_burned or 0) + calories
     }, status=status.HTTP_200_OK)
 
 # get user profile

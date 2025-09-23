@@ -25,6 +25,7 @@ class DailyUserStats(models.Model):
     calories_burned = models.FloatField(default=0)
     weight = models.FloatField(null=True, blank=True)
     time_spent_today = models.IntegerField(default=0, help_text="Time spent active on the site today, in seconds.")
+    workouts_today = models.IntegerField(default=0, help_text="Number of workouts completed today.")
 
 
     class Meta:
