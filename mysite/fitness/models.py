@@ -13,7 +13,7 @@ class UserProfile(models.Model):
     age = models.IntegerField(null=True, blank=True)
     weight = models.FloatField(null=True, blank=True)
     height = models.FloatField(null=True, blank=True)
-    gender = models.CharField(max_length=10, blank=True, default='')
+    gender = models.CharField(max_length=10, blank=True, null=True)
     level = models.CharField(max_length=20, default='beginner')
 
     def __str__(self):

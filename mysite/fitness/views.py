@@ -24,8 +24,12 @@ def register_user(request):
     
     user = User.objects.create_user(username=username, email=email, password=password)
 
+    # Ensure empty strings for optional fields are saved as NULL
+    gender_to_save = gender if gender else None
+    weight_to_save = weight if weight else None
+
     # Create UserProfile with optional gender and weight
-    UserProfile.objects.create(user=user, gender=gender or None, weight=weight or None)
+    UserProfile.objects.create(user=user, gender=gender_to_save, weight=weight_to_save)
 
     return Response({'message': 'User created successfully. Please log in.'}, status=status.HTTP_201_CREATED)
 
